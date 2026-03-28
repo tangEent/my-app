@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>極限迷宮 - 怨霊の咆哮</title>
+    <style>
+        body { 
+            margin: 0; padding: 0; background: #000; color: white; 
+            overflow: hidden; font-family: 'Yu Mincho', 'Sawarabi Mincho', serif; 
+        }
+        canvas { display: block; }
+
+        /* --- 新しいUIデザイン --- */
+        #topRightHud {
+            position: absolute; top: 15px; right: 15px;
+            background: rgba(15, 10, 5, 0.85); padding: 10px 20px;
+            border: 2px solid #5c4033; border-radius: 4px; z-index: 10;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.8);
+            font-size: 22px; color: #ffffff; font-weight: bold;
+        }
+
+        #topLeftHud {
+            position: absolute; top: 15px; left: 15px;
+            z-index: 10; display: flex; flex-direction: column; gap: 10px;
+        }
+
+        #scoreBox {
+            background: rgba(15, 10, 5, 0.85); padding: 8px 15px;
+            border: 2px solid #5c4033; border-radius: 4px;
+            color: #d4af37; font-size: 18px; font-weight: bold; width: fit-content;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.8);
+        }
+
+        #inventory { display: flex; gap: 10px; min-height: 69px; }
+        
+        .inv-slot {
+            width: 65px; height: 65px;
+            background: rgba(15, 10, 5, 0.85); border: 2px solid #5c4033;
+            border-radius: 4px; box-shadow: 0 4px 10px rgba(0,0,0,0.8);
+            position: relative;
+            transition: all 0.2s ease;
+        }
+        .inv-slot.selected {
+            border-color: #d4af37;
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.8), inset 0 0 10px rgba(212, 175, 55, 0.3);
+            background: rgba(40, 30, 15, 0.95);
+            transform: translateY(-2px);
+        }
+        .inv-count {
+            position: absolute; bottom: 4px; right: 6px; font-size: 18px; color: #fff; 
+            text-shadow: 1px 1px 2px #000; font-weight: bold; z-index: 2;
+        }
+
+        /* --- インベントリアイコン (CSSのみで描画) --- */
+        .icon-key {
+            width: 14px; height: 14px;
+            border: 3px solid #bbaaa0; border-radius: 50%;
+            position: absolute; top: 18px; left: 14px;
+            box-sizing: content-box;
+        }
+        .icon-key::after {
+            content: ''; position: absolute;
+            top: 4px; left: 14px; width: 16px; height: 3px; background: #bbaaa0;
+            box-shadow: 2px 4px 0 -0.5px #bbaaa0, 8px 4px 0 -0.5px #bbaaa0;
+        }
+
+        .icon-compass {
+            width: 32px; height: 32px;
+            border: 3px solid #bbaaa0; border-radius: 50%;
+            position: absolute; top: 15px; left: 15px;
+            box-sizing: border-box; background: rgba(0,0,0,0.5);
+        }
+        .icon-compass::before {
+            content: ''; position: absolute;
+            top: 1px; left: 9px;
+            border-left: 4px solid transparent; border-right: 4px solid transparent;
+            border-bottom: 11px solid #cc3333;
+        }
+        .icon-compass::after {
+            content: ''; position: absolute;
+            bottom: 1px; left: 9px;
+            border-left: 4px solid transparent; border-right: 4px solid transparent;
+            border-top: 11px solid #999;
+        }
+
+        .icon-mirror {
+            width: 22px; height: 28px;
+            border: 3px solid #bbaaa0; border-radius: 50% 50% 50% 50%;
+            position: absolute; top: 12px; left: 20px;
+            background: linear-gradient(135deg, transparent 15%, rgba(255,255,255,0.7) 45%, transparent 75%);
+            box-sizing: border-box;
+        }
+        .icon-mirror::after {
+            content: ''; position: absolute;
+            bottom: -11px; left: 6px; width: 4px; height: 9px; background: #bbaaa0;
+            border-radius: 2px;
+        }
+
+        /* アイコンの色が選択時に変わるギミック */
+        .inv-slot.selected .icon-key, .inv-slot.selected .icon-key::after { border-color: #d4af37; background-color: transparent; }
+        .inv-slot.selected .icon-key::after { background-color: #d4af37; box-shadow: 2px 4px 0 -0.5px #d4af37, 8px 4px 0 -0.5px #d4af37; }
+        .inv-slot.selected .icon-compass { border-color: #d4af37; }
+        .inv-slot.selected .icon-mirror { border-color: #d4af37; }
+        .inv-slot.selected .icon-mirror::after { background-color: #d4af37; }
+
+        #message { color: #ff5555; height: 20px; font-size: 16px; font-weight: bold; text-shadow: 1px 1px 2px black; }
+
+        /* --- 既存のスクリーン設定 --- */
+        .screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background: rgba(10, 5, 5, 0.95); z-index: 20;
+            backdrop-filter: blur(5px);
+        }
+        .hidden { display: none !important; }
+        
+        h1 { font-size: 60px; margin-bottom: 20px; text-shadow: 0 0 20px rgba(200,50,50,0.5); color: #e8dcc7; }
+        .result-text { font-size: 24px; color: #d4af37; margin-bottom: 20px; }
+        
+        #ruleContainer { display: none; margin-bottom: 20px; }
+        .rule-box {
+            background: rgba(40, 20, 10, 0.8); border: 2px solid #5c4033;
+            padding: 20px 40px; border-radius: 5px; text-align: left; max-width: 650px;
+            max-height: 50vh; overflow-y: auto;
+        }
+        .rule-box h2 { margin-top: 0; color: #d4af37; text-align: center; }
+        .rule-box ul { font-size: 16px; line-height: 1.6; color: #e8dcc7; padding-left: 20px; }
+        .rule-box li { margin-bottom: 8px; }
+        
+        button {
+            padding: 15px 40px; font-size: 24px; font-weight: bold; margin: 10px;
+            color: #e8dcc7; background: #3e2723; border: 2px solid #5c4033;
+            border-radius: 4px; cursor: pointer; transition: 0.2s; font-family: 'Yu Mincho', serif;
+        }
+        button:hover { background: #5c4033; transform: scale(1.05); }
+
+        #gameOverScreen h1 { color: #aa2222; }
+        #clearScreen h1 { color: #d4af37; }
+
+        .rule-box::-webkit-scrollbar { width: 8px; }
+        .rule-box::-webkit-scrollbar-track { background: #28140a; }
+        .rule-box::-webkit-scrollbar-thumb { background: #5c4033; border-radius: 4px; }
+
+        /* ヒント領域 */
+        #hintBox {
+            display: none; margin-top: 15px; background: rgba(50, 10, 10, 0.9);
+            padding: 20px; border: 1px solid #ff5555; border-radius: 5px;
+            max-width: 600px; text-align: left; line-height: 1.6; color: #e8dcc7;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.3);
+        }
+        #hintBox h3 { color: #ff5555; margin-top: 0; border-bottom: 1px solid #ff5555; padding-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <div id="topRightHud" class="hidden">
+        刻限: <span id="timerDisp">00:00.00</span>
+    </div>
+
+    <div id="topLeftHud" class="hidden">
+        <div id="scoreBox">勾玉: <span id="score">0</span> / 5</div>
+        <div id="inventory">
+            </div>
+        <div id="message"></div>
+    </div>
+
+    <div id="startScreen" class="screen">
+        <h1>怨霊屋敷</h1>
+        <button onclick="toggleRules()" style="font-size: 18px; padding: 10px 20px;">掟（ルール）を確認</button>
+        <div id="ruleContainer">
+            <div class="rule-box">
+                <h2>【 掟 】</h2>
+                <ul>
+                    <li><strong>目的:</strong> 徘徊者から逃げながら、屋敷に散らばる勾玉を <b>5個</b> 集め、ゴール（出口）を目指せ。</li>
+                    <li><strong>隠れ戸棚:</strong> 隠れている間は一部の怨霊に見つからず、追跡も解除される。</li>
+                    <li><strong>アイテム操作:</strong> <b>「O」「P」キー</b>でインベントリのカーソル移動。<b>「I」キー</b>で使用。</li>
+                    <li><strong>手鏡:</strong> 選択して「I」キーでランダムな戸棚へ緊急ワープ。</li>
+                    <li><strong>導きのコンパス:</strong> 選択して「I」キーで使用。<b>3秒間だけ</b>出口（出現前は一番近い勾玉）の方向を指し示す。</li>
+                    <li><strong>鍵:</strong> <b>インベントリで選択している状態</b>で勾玉に触れると自動で封印を解く。</li>
+                </ul>
+            </div>
+        </div>
+        <button onclick="initGame()" style="margin-top: 20px;">屋敷へ足を踏み入れる</button>
+    </div>
+
+    <div id="gameOverScreen" class="screen hidden">
+        <h1>捕縛された...</h1>
+        <div class="result-text">生存時間: <span id="failTime"></span></div>
+        <p>暗闇の奥深くへ引きずり込まれた</p>
+        
+        <div>
+            <button onclick="initGame()">再び屋敷へ挑む</button>
+            <button onclick="goHome()">ホームへ戻る</button>
+        </div>
+        
+        <button onclick="showHint()" style="font-size: 18px; padding: 10px 20px; background: #551111;">死因から学ぶ（ヒント）</button>
+        <div id="hintBox">
+            <h3>死に至った原因</h3>
+            <span id="hintText"></span>
+        </div>
+    </div>
+
+    <div id="clearScreen" class="screen hidden">
+        <h1>生還</h1>
+        <div class="result-text">脱出時間: <span id="clearTime"></span></div>
+        <p>無事に勾玉を持ち帰り、呪いから逃れた</p>
+        
+        <div>
+            <button onclick="initGame()">次の屋敷へ挑む</button>
+            <button onclick="goHome()">ホームへ戻る</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        function toggleRules() {
+            const rc = document.getElementById('ruleContainer');
+            rc.style.display = rc.style.display === 'block' ? 'none' : 'block';
+        }
+
+        const CONFIG = {
+            enemies: { redCount: 4, greenCount: 2, blueProbPerMagatama: 0.5, alertTime: 40, greenAlertTime: 120 },
+            player: { baseSpeed: 3.5, dashSpeed: 6.5, maxStamina: 300, staminaDrain: 2.0, staminaRecover: 0.8 }
+        };
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const scoreEl = document.getElementById('score');
+        const timerEl = document.getElementById('timerDisp');
+        const messageEl = document.getElementById('message');
+        const inventoryEl = document.getElementById('inventory');
+        
+        const topLeftHud = document.getElementById('topLeftHud');
+        const topRightHud = document.getElementById('topRightHud');
+        const screens = { start: document.getElementById('startScreen'), gameOver: document.getElementById('gameOverScreen'), clear: document.getElementById('clearScreen') };
+
+        const TILE_SIZE = 30; 
+        const BLOCKS = 6;
+        const BLOCK_SIZE = 14; 
+        const COLS = BLOCKS * BLOCK_SIZE + 1; 
+        const ROWS = BLOCKS * BLOCK_SIZE + 1; 
+        const MAGATAMA_REQUIRED = 5;
+        const MAGATAMA_PLACED = 7;
+        const KEYS_PLACED = 8;
+        const MIRRORS_PLACED = 3;
+        const COMPASSES_PLACED = 3;
+
+        let gameState = 'START';
+        let level = { maze: [], rooms: [], enemies: [], magatamas: [], keys: [], mirrors: [], compasses: [] };
+        let player = { x: 0, y: 0, radius: 10, stamina: CONFIG.player.maxStamina, canDash: true, isHiding: false, compassActiveUntil: 0 };
+        let camera = { x: 0, y: 0 };
+        
+        // --- インベントリ管理 ---
+        let score = 0;
+        let keysCount = 0;
+        let compassCount = 0;
+        let mirrorsCount = 0;
+        let inventoryList = []; // 拾った順番にアイテムの種別('key', 'compass', 'mirror')を保持
+        let invCursor = 0; 
+        
+        let goal = null;
+        const keysState = {};
+        
+        let startTime = 0;
+        let finalTimeStr = "";
+        let isNearBlue = false; 
+        let isDiscovered = false;
+        let oKeyWasPressed = false;
+        let pKeyWasPressed = false;
+        let iKeyWasPressed = false;
+
+        function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function formatTime(ms) {
+            let totalSeconds = Math.floor(ms / 1000);
+            let m = Math.floor(totalSeconds / 60);
+            let s = totalSeconds % 60;
+            let zz = Math.floor((ms % 1000) / 10);
+            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${zz.toString().padStart(2, '0')}`;
+        }
+
+        // 動的インベントリのUI更新
+        function updateInventoryUI() {
+            inventoryEl.innerHTML = '';
+            
+            if (inventoryList.length === 0) {
+                invCursor = 0;
+                return;
+            }
+
+            // カーソルが範囲外にならないよう調整
+            if (invCursor >= inventoryList.length) invCursor = inventoryList.length - 1;
+            if (invCursor < 0) invCursor = 0;
+
+            inventoryList.forEach((item, index) => {
+                let slot = document.createElement('div');
+                slot.className = 'inv-slot' + (index === invCursor ? ' selected' : '');
+                
+                let icon = document.createElement('div');
+                let countSpan = document.createElement('span');
+                countSpan.className = 'inv-count';
+
+                if (item === 'key') {
+                    icon.className = 'icon-key';
+                    countSpan.innerText = keysCount;
+                } else if (item === 'compass') {
+                    icon.className = 'icon-compass';
+                    countSpan.innerText = compassCount;
+                } else if (item === 'mirror') {
+                    icon.className = 'icon-mirror';
+                    countSpan.innerText = mirrorsCount;
+                }
+
+                slot.appendChild(icon);
+                slot.appendChild(countSpan);
+                inventoryEl.appendChild(slot);
+            });
+        }
+
+        function goHome() {
+            screens.gameOver.classList.add('hidden');
+            screens.clear.classList.add('hidden');
+            screens.start.classList.remove('hidden');
+            topLeftHud.classList.add('hidden');
+            topRightHud.classList.add('hidden');
+            gameState = 'START';
+        }
+
+        function initGame() {
+            Object.keys(keysState).forEach(k => keysState[k] = false);
+            score = 0; keysCount = 0; mirrorsCount = 0; compassCount = 0;
+            inventoryList = [];
+            invCursor = 0;
+            oKeyWasPressed = false; pKeyWasPressed = false; iKeyWasPressed = false;
+            
+            player.stamina = CONFIG.player.maxStamina; player.canDash = true; player.isHiding = false; player.compassActiveUntil = 0;
+            
+            scoreEl.innerText = score;
+            messageEl.innerText = "";
+            document.getElementById('hintBox').style.display = 'none'; // ヒント非表示
+            updateInventoryUI();
+            
+            screens.start.classList.add('hidden'); screens.gameOver.classList.add('hidden'); screens.clear.classList.add('hidden');
+            topLeftHud.classList.remove('hidden'); topRightHud.classList.remove('hidden');
+            
+            generateMaze();
+            gameState = 'PLAYING';
+            startTime = Date.now();
+        }
+
+        function generateMaze() {
+            level = { maze: [], rooms: [], enemies: [], magatamas: [], keys: [], mirrors: [], compasses: [] };
+            goal = null;
+            for (let y = 0; y < ROWS; y++) level.maze[y] = new Array(COLS).fill(1);
+            let roomsGrid = [];
+            
+            for (let gy = 0; gy < BLOCKS; gy++) {
+                roomsGrid[gy] = [];
+                for (let gx = 0; gx < BLOCKS; gx++) {
+                    let rw = Math.floor(Math.random() * 5) + 6;
+                    let rh = Math.floor(Math.random() * 5) + 6;
+                    let rx = gx * BLOCK_SIZE + 2 + Math.floor(Math.random() * (BLOCK_SIZE - rw - 3));
+                    let ry = gy * BLOCK_SIZE + 2 + Math.floor(Math.random() * (BLOCK_SIZE - rh - 3));
+                    let cx = Math.floor(rx + rw / 2); let cy = Math.floor(ry + rh / 2);
+                    let roomObj = { x: rx, y: ry, w: rw, h: rh, cx: cx, cy: cy };
+                    roomsGrid[gy][gx] = roomObj;
+                    level.rooms.push(roomObj);
+                    for(let y = ry; y < ry + rh; y++) for(let x = rx; x < rx + rw; x++) level.maze[y][x] = 0; 
+                    if (Math.random() < 0.7) level.maze[ry + 1][rx + 1] = 5; 
+                }
+            }
+
+            function carveCorridor(x1, y1, x2, y2) {
+                let x = x1, y = y1;
+                if (Math.random() < 0.5) {
+                    while(x !== x2) { level.maze[y][x] = 0; level.maze[y+1][x] = 0; x += (x2 > x1) ? 1 : -1; }
+                    while(y !== y2) { level.maze[y][x] = 0; level.maze[y][x+1] = 0; y += (y2 > y1) ? 1 : -1; }
+                } else {
+                    while(y !== y2) { level.maze[y][x] = 0; level.maze[y][x+1] = 0; y += (y2 > y1) ? 1 : -1; }
+                    while(x !== x2) { level.maze[y][x] = 0; level.maze[y+1][x] = 0; x += (x2 > x1) ? 1 : -1; }
+                }
+            }
+
+            for (let gy = 0; gy < BLOCKS; gy++) {
+                for (let gx = 0; gx < BLOCKS; gx++) {
+                    let cur = roomsGrid[gy][gx];
+                    if (gx < BLOCKS - 1) carveCorridor(cur.cx, cur.cy, roomsGrid[gy][gx+1].cx, roomsGrid[gy][gx+1].cy);
+                    if (gy < BLOCKS - 1) carveCorridor(cur.cx, cur.cy, roomsGrid[gy+1][gx].cx, roomsGrid[gy+1][gx].cy);
+                }
+            }
+
+            let startRoom = roomsGrid[BLOCKS-1][BLOCKS-1];
+            player.x = startRoom.cx * TILE_SIZE + (TILE_SIZE / 2); player.y = startRoom.cy * TILE_SIZE + (TILE_SIZE / 2);
+            let availableRooms = [...level.rooms].filter(r => !(r.cx === startRoom.cx && r.cy === startRoom.cy));
+            availableRooms.sort(() => Math.random() - 0.5);
+
+            for (let i = 0; i < MAGATAMA_PLACED; i++) {
+                let r = availableRooms[i]; level.magatamas.push({ x: r.cx, y: r.cy, locked: true });
+                if (Math.random() < CONFIG.enemies.blueProbPerMagatama) {
+                    level.enemies.push({ type: 'blue', x: r.cx * TILE_SIZE, y: (r.cy - 1) * TILE_SIZE, radius: 10, wanderSpeed: 0.8, chaseSpeed: 3.5, state: 'wander', wanderDir: Math.random() * Math.PI * 2, facingDir: 0, chaseTimer: 0, alertTimer: 0 });
+                }
+            }
+            for (let i = MAGATAMA_PLACED; i < MAGATAMA_PLACED + KEYS_PLACED; i++) {
+                let r = availableRooms[i]; if(r) level.keys.push({ x: r.cx, y: r.cy }); 
+            }
+            for (let i = MAGATAMA_PLACED + KEYS_PLACED; i < MAGATAMA_PLACED + KEYS_PLACED + MIRRORS_PLACED; i++) {
+                let r = availableRooms[i]; if(r) level.mirrors.push({ x: r.cx, y: r.cy }); 
+            }
+            for (let i = MAGATAMA_PLACED + KEYS_PLACED + MIRRORS_PLACED; i < MAGATAMA_PLACED + KEYS_PLACED + MIRRORS_PLACED + COMPASSES_PLACED; i++) {
+                let r = availableRooms[i]; if(r) level.compasses.push({ x: r.cx, y: r.cy }); 
+            }
+
+            for (let i = 0; i < CONFIG.enemies.redCount; i++) {
+                let r = level.rooms[Math.floor(Math.random() * level.rooms.length)];
+                level.enemies.push({ type: 'red', x: r.cx * TILE_SIZE, y: r.cy * TILE_SIZE, radius: 10, wanderSpeed: 1.2, chaseSpeed: 3.0, state: 'wander', wanderDir: Math.random() * Math.PI * 2, facingDir: 0, chaseTimer: 0, alertTimer: 0 });
+            }
+            for (let i = 0; i < CONFIG.enemies.greenCount; i++) {
+                let r = level.rooms[Math.floor(Math.random() * level.rooms.length)];
+                level.enemies.push({ type: 'green', x: r.cx * TILE_SIZE, y: r.cy * TILE_SIZE, radius: 10, wanderSpeed: 5.5, chaseSpeed: 4.0, state: 'wander', wanderDir: Math.random() * Math.PI * 2, facingDir: 0, chaseTimer: 0, alertTimer: 0 });
+            }
+
+            let purpleStartRoom = roomsGrid[0][0];
+            level.enemies.push({
+                type: 'purple', x: purpleStartRoom.cx * TILE_SIZE + TILE_SIZE / 2, y: purpleStartRoom.cy * TILE_SIZE + TILE_SIZE / 2,
+                radius: 11, chaseSpeed: 1.6, facingDir: 0, path: [], pathUpdateTimer: 0
+            });
+        }
+
+        function getPathToPlayer(startX, startY, goalX, goalY) {
+            let s = { x: Math.floor(startX / TILE_SIZE), y: Math.floor(startY / TILE_SIZE) };
+            let g = { x: Math.floor(goalX / TILE_SIZE), y: Math.floor(goalY / TILE_SIZE) };
+            if (s.x === g.x && s.y === g.y) return [];
+
+            let queue = [s]; let cameFrom = {}; let key = (x, y) => `${x},${y}`;
+            cameFrom[key(s.x, s.y)] = null; let dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]]; let found = false;
+
+            let head = 0;
+            while (head < queue.length && head < 3000) {
+                let cur = queue[head++];
+                if (cur.x === g.x && cur.y === g.y) { found = true; break; }
+                for (let d of dirs) {
+                    let nx = cur.x + d[0], ny = cur.y + d[1];
+                    if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS && (level.maze[ny][nx] === 0 || level.maze[ny][nx] === 5)) {
+                        let nKey = key(nx, ny);
+                        if (cameFrom[nKey] === undefined) { cameFrom[nKey] = cur; queue.push({ x: nx, y: ny }); }
+                    }
+                }
+            }
+            if (found) {
+                let path = []; let cur = g;
+                while (cur !== null && (cur.x !== s.x || cur.y !== s.y)) { path.push(cur); cur = cameFrom[key(cur.x, cur.y)]; }
+                return path.reverse();
+            }
+            return [];
+        }
+
+        function canMoveTo(x, y, r) {
+            const m = 5; let pts = [{x:x-r+m, y:y-r+m}, {x:x+r-m, y:y-r+m}, {x:x-r+m, y:y+r-m}, {x:x+r-m, y:y+r-m}];
+            return pts.every(p => {
+                let gx = Math.floor(p.x / TILE_SIZE), gy = Math.floor(p.y / TILE_SIZE);
+                let tile = level.maze[gy] ? level.maze[gy][gx] : 1; return tile === 0 || tile === 5; 
+            });
+        }
+
+        function getWideOpenFloorTile() {
+            let candidates = [];
+            for(let y = 2; y < ROWS - 2; y++) {
+                for(let x = 2; x < COLS - 2; x++) {
+                    let isClear = true;
+                    for(let dy = -1; dy <= 1; dy++) for(let dx = -1; dx <= 1; dx++) if(level.maze[y+dy][x+dx] !== 0) isClear = false;
+                    if(isClear) candidates.push({x: x, y: y});
+                }
+            }
+            if(candidates.length > 0) return candidates[Math.floor(Math.random() * candidates.length)];
+            return {x: level.rooms[0].cx, y: level.rooms[0].cy};
+        }
+
+        function gameOver(killerType) {
+            finalTimeStr = formatTime(Date.now() - startTime);
+            document.getElementById('failTime').innerText = finalTimeStr;
+            
+            // 死因に基づくヒントの設定
+            const hints = {
+                'red': '【徘徊者（赤）】\n視覚と聴覚に頼ってプレイヤーを追跡してくる。見つかったら死角や「隠れ戸棚」に逃げ込んでやり過ごそう。',
+                'blue': '【徘徊者（青）】\n近くにいると空間が歪む。走る音に非常に敏感なため、近くにいるときは歩いて移動すると気づかれにくい。',
+                'green': '【徘徊者（緑）】\nプレイヤーを視認すると激しく震え出し、数秒後に周囲の怨霊を呼び寄せる。鳴き声を発する前に、素早く視界から外れろ。',
+                'purple': '【千里眼の怨霊（紫）】\nどこにいても最短距離で確実に追ってくる。足は遅いが「隠れ戸棚」に逃げ込んでも引きずり出される。常に距離を取り続けろ。'
+            };
+            document.getElementById('hintText').innerText = hints[killerType] || "怨霊の餌食となった...";
+            
+            gameState = 'GAMEOVER'; 
+            topLeftHud.classList.add('hidden'); topRightHud.classList.add('hidden'); 
+            screens.gameOver.classList.remove('hidden');
+        }
+
+        function showHint() {
+            document.getElementById('hintBox').style.display = 'block';
+        }
+
+        function update() {
+            if (gameState !== 'PLAYING') return;
+            let elapsed = Date.now() - startTime;
+            timerEl.innerText = formatTime(elapsed);
+
+            // インベントリのカーソル移動
+            if (keysState['o'] && !oKeyWasPressed) { 
+                oKeyWasPressed = true; 
+                if (inventoryList.length > 0) {
+                    invCursor = (invCursor - 1 + inventoryList.length) % inventoryList.length; 
+                    updateInventoryUI(); 
+                }
+            } else if (!keysState['o']) oKeyWasPressed = false;
+
+            if (keysState['p'] && !pKeyWasPressed) { 
+                pKeyWasPressed = true; 
+                if (inventoryList.length > 0) {
+                    invCursor = (invCursor + 1) % inventoryList.length; 
+                    updateInventoryUI(); 
+                }
+            } else if (!keysState['p']) pKeyWasPressed = false;
+
+            // アイテムの使用
+            if (keysState['i'] && !iKeyWasPressed) {
+                iKeyWasPressed = true;
+                if (inventoryList.length > 0) {
+                    let currentItem = inventoryList[invCursor];
+                    
+                    if (currentItem === 'compass') { 
+                        if (compassCount > 0) {
+                            compassCount--; 
+                            player.compassActiveUntil = Date.now() + 3000; // 3秒間に変更
+                            if (compassCount <= 0) inventoryList.splice(invCursor, 1);
+                            updateInventoryUI();
+                            messageEl.innerText = goal ? "羅針盤の力！3秒間、出口の方角が分かる！" : "羅針盤の力！3秒間、最も近い勾玉が分かる！";
+                        }
+                    } else if (currentItem === 'mirror') { 
+                        if (mirrorsCount > 0) {
+                            let hidingSpots = [];
+                            for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) if (level.maze[y][x] === 5) hidingSpots.push({ x: x, y: y });
+                            if (hidingSpots.length > 0) {
+                                let target = hidingSpots[Math.floor(Math.random() * hidingSpots.length)];
+                                player.x = target.x * TILE_SIZE + (TILE_SIZE / 2); player.y = target.y * TILE_SIZE + (TILE_SIZE / 2);
+                                mirrorsCount--;
+                                if (mirrorsCount <= 0) inventoryList.splice(invCursor, 1);
+                                updateInventoryUI();
+                                messageEl.innerText = "手鏡の力で転移した！";
+                            }
+                        }
+                    } else if (currentItem === 'key') {
+                        messageEl.innerText = "鍵は封印された勾玉に触れると自動で使われる。";
+                    }
+                }
+            } else if (!keysState['i']) iKeyWasPressed = false;
+
+            // プレイヤー移動とスタミナ
+            let isMoving = false; let currentSpeed = CONFIG.player.baseSpeed;
+            if (keysState['w'] || keysState['arrowup'] || keysState['s'] || keysState['arrowdown'] || keysState['a'] || keysState['arrowleft'] || keysState['d'] || keysState['arrowright']) isMoving = true;
+            let isDashing = false;
+            if (keysState['space'] && isMoving && player.canDash) {
+                isDashing = true; currentSpeed = CONFIG.player.dashSpeed;
+                player.stamina = Math.max(0, player.stamina - CONFIG.player.staminaDrain);
+                if (player.stamina === 0) player.canDash = false;
+            } else {
+                player.stamina = Math.min(CONFIG.player.maxStamina, player.stamina + CONFIG.player.staminaRecover);
+                if (player.stamina > CONFIG.player.maxStamina * 0.3) player.canDash = true;
+            }
+
+            let dx = 0, dy = 0;
+            if (keysState['w'] || keysState['arrowup']) dy -= currentSpeed;
+            if (keysState['s'] || keysState['arrowdown']) dy += currentSpeed;
+            if (keysState['a'] || keysState['arrowleft']) dx -= currentSpeed;
+            if (keysState['d'] || keysState['arrowright']) dx += currentSpeed;
+            if (dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707; }
+            if (canMoveTo(player.x + dx, player.y, player.radius)) player.x += dx;
+            if (canMoveTo(player.x, player.y + dy, player.radius)) player.y += dy;
+            
+            camera.x = player.x - canvas.width / 2; camera.y = player.y - canvas.height / 2;
+            player.isHiding = (level.maze[Math.floor(player.y/TILE_SIZE)][Math.floor(player.x/TILE_SIZE)] === 5);
+
+            // アイテムの取得処理
+            level.keys = level.keys.filter(k => {
+                if (Math.hypot(player.x - (k.x * TILE_SIZE + TILE_SIZE / 2), player.y - (k.y * TILE_SIZE + TILE_SIZE / 2)) < TILE_SIZE) { 
+                    keysCount++; 
+                    if (!inventoryList.includes('key')) inventoryList.push('key');
+                    updateInventoryUI();
+                    messageEl.innerText = "鍵を拾った。"; return false; 
+                }
+                return true;
+            });
+            level.mirrors = level.mirrors.filter(m => {
+                if (Math.hypot(player.x - (m.x * TILE_SIZE + TILE_SIZE / 2), player.y - (m.y * TILE_SIZE + TILE_SIZE / 2)) < TILE_SIZE) { 
+                    mirrorsCount++; 
+                    if (!inventoryList.includes('mirror')) inventoryList.push('mirror');
+                    updateInventoryUI();
+                    messageEl.innerText = "手鏡を拾った。"; return false; 
+                }
+                return true;
+            });
+            level.compasses = level.compasses.filter(c => {
+                if (Math.hypot(player.x - (c.x * TILE_SIZE + TILE_SIZE / 2), player.y - (c.y * TILE_SIZE + TILE_SIZE / 2)) < TILE_SIZE) {
+                    compassCount++; 
+                    if (!inventoryList.includes('compass')) inventoryList.push('compass');
+                    updateInventoryUI();
+                    messageEl.innerText = "羅針盤を拾った。"; return false;
+                }
+                return true;
+            });
+
+            // 勾玉の取得
+            level.magatamas = level.magatamas.filter(m => {
+                if (Math.hypot(player.x - (m.x * TILE_SIZE + TILE_SIZE / 2), player.y - (m.y * TILE_SIZE + TILE_SIZE / 2)) < TILE_SIZE * 0.8 && m.locked) {
+                    if (inventoryList.length > 0 && inventoryList[invCursor] === 'key') {
+                        if (keysCount > 0) { 
+                            keysCount--; 
+                            if (keysCount <= 0) inventoryList.splice(invCursor, 1);
+                            updateInventoryUI();
+                            
+                            m.locked = false; score++; scoreEl.innerText = score; 
+                            if (score === MAGATAMA_REQUIRED) {
+                                let goalPos = getWideOpenFloorTile();
+                                goal = { x: goalPos.x, y: goalPos.y };
+                                messageEl.innerText = "出口が開かれた！急げ！"; 
+                            }
+                            return false; 
+                        }
+                    } else {
+                        messageEl.innerText = "鍵を選択した状態で触れろ！";
+                    }
+                }
+                return true;
+            });
+
+            if (score >= MAGATAMA_REQUIRED) level.magatamas = [];
+
+            isNearBlue = false; isDiscovered = false;
+
+            // 敵の挙動
+            level.enemies.forEach(e => {
+                let dist = Math.hypot(player.x - e.x, player.y - e.y);
+
+                if (e.type === 'purple') {
+                    e.pathUpdateTimer--;
+                    if (e.pathUpdateTimer <= 0) {
+                        e.path = getPathToPlayer(e.x, e.y, player.x, player.y);
+                        e.pathUpdateTimer = 30; 
+                    }
+                    if (e.path.length > 0) {
+                        let targetX = e.path[0].x * TILE_SIZE + TILE_SIZE / 2;
+                        let targetY = e.path[0].y * TILE_SIZE + TILE_SIZE / 2;
+                        if (Math.hypot(targetX - e.x, targetY - e.y) < e.chaseSpeed) {
+                            e.x = targetX; e.y = targetY; e.path.shift();
+                        } else {
+                            e.facingDir = Math.atan2(targetY - e.y, targetX - e.x);
+                            e.x += Math.cos(e.facingDir) * e.chaseSpeed;
+                            e.y += Math.sin(e.facingDir) * e.chaseSpeed;
+                        }
+                    } else {
+                        e.facingDir = Math.atan2(player.y - e.y, player.x - e.x);
+                        e.x += Math.cos(e.facingDir) * e.chaseSpeed;
+                        e.y += Math.sin(e.facingDir) * e.chaseSpeed;
+                    }
+
+                    if (dist < TILE_SIZE * 8) isDiscovered = true;
+                    // 紫は隠れていてもゲームオーバー
+                    if (dist < TILE_SIZE * 0.7) gameOver(e.type);
+                    return; 
+                }
+
+                let inSight = false;
+                if (!player.isHiding) {
+                    if (e.type === 'red' || e.type === 'green') {
+                        let angleToP = Math.atan2(player.y - e.y, player.x - e.x);
+                        let angleDiff = Math.atan2(Math.sin(angleToP - e.facingDir), Math.cos(angleToP - e.facingDir));
+                        if (Math.abs(angleDiff) < Math.PI / 3 && dist < TILE_SIZE * 9) {
+                            inSight = true; 
+                            let steps = Math.ceil(dist / 8);
+                            for (let i = 0; i < steps; i++) {
+                                let cx = e.x + (player.x - e.x) * (i / steps), cy = e.y + (player.y - e.y) * (i / steps);
+                                if (level.maze[Math.floor(cy / TILE_SIZE)][Math.floor(cx / TILE_SIZE)] === 1) { inSight = false; break; }
+                            }
+                        }
+                    } else if (e.type === 'blue' && isDashing && dist < TILE_SIZE * 8) inSight = true;
+                }
+
+                if (inSight) { 
+                    if (e.state === 'wander') {
+                        e.state = 'alert';
+                        e.alertTimer = (e.type === 'green') ? CONFIG.enemies.greenAlertTime : CONFIG.enemies.alertTime;
+                        e.facingDir = Math.atan2(player.y - e.y, player.x - e.x);
+                        if(e.type === 'green') messageEl.innerText = "緑の怨霊に睨まれている...！";
+                    } else if (e.state === 'chase') e.chaseTimer = 300;
+                }
+
+                if (e.state === 'alert') { 
+                    e.alertTimer--; 
+                    if (e.alertTimer <= 0) { 
+                        e.state = 'chase'; e.chaseTimer = 400; 
+                        if (e.type === 'green') {
+                            messageEl.innerText = "怨霊が叫んだ！仲間が集まってくる！";
+                            level.enemies.forEach(other => {
+                                if (other.type !== 'purple' && other !== e && Math.hypot(other.x - e.x, other.y - e.y) < TILE_SIZE * 20) {
+                                    other.state = 'chase'; other.chaseTimer = 400;
+                                }
+                            });
+                        }
+                    } 
+                }
+                else if (e.state === 'chase') { 
+                    e.chaseTimer--; if (e.chaseTimer <= 0) e.state = 'wander'; 
+                    e.facingDir = Math.atan2(player.y - e.y, player.x - e.x); 
+                    let speed = e.chaseSpeed;
+                    let vx = Math.cos(e.facingDir) * speed, vy = Math.sin(e.facingDir) * speed; 
+                    if (canMoveTo(e.x + vx, e.y, e.radius)) e.x += vx; 
+                    if (canMoveTo(e.x, e.y + vy, e.radius)) e.y += vy; 
+                }
+                else { 
+                    e.facingDir = e.wanderDir; 
+                    let vx = Math.cos(e.wanderDir) * e.wanderSpeed, vy = Math.sin(e.wanderDir) * e.wanderSpeed; 
+                    if (canMoveTo(e.x + vx, e.y + vy, e.radius)) { e.x += vx; e.y += vy; } else e.wanderDir = Math.random() * Math.PI * 2; 
+                }
+
+                if (e.type === 'blue' && dist < TILE_SIZE * 8) isNearBlue = true;
+                if (e.state === 'alert' || e.state === 'chase') isDiscovered = true;
+                if (dist < TILE_SIZE * 0.7 && !player.isHiding) gameOver(e.type);
+            });
+
+            if (goal && score >= MAGATAMA_REQUIRED && Math.hypot(player.x - (goal.x * TILE_SIZE + TILE_SIZE / 2), player.y - (goal.y * TILE_SIZE + TILE_SIZE / 2)) < TILE_SIZE) {
+                finalTimeStr = formatTime(Date.now() - startTime);
+                document.getElementById('clearTime').innerText = finalTimeStr;
+                gameState = 'CLEAR'; topLeftHud.classList.add('hidden'); topRightHud.classList.add('hidden'); screens.clear.classList.remove('hidden');
+            }
+        }
+
+        function draw() {
+            update();
+            ctx.fillStyle = '#0a0a0c'; ctx.fillRect(0, 0, canvas.width, canvas.height); 
+
+            if (gameState === 'PLAYING') {
+                ctx.save(); ctx.translate(-camera.x, -camera.y);
+                
+                let sX = Math.max(0, Math.floor(camera.x / TILE_SIZE)), eX = Math.min(COLS, Math.ceil((camera.x + canvas.width) / TILE_SIZE));
+                let sY = Math.max(0, Math.floor(camera.y / TILE_SIZE)), eY = Math.min(ROWS, Math.ceil((camera.y + canvas.height) / TILE_SIZE));
+                
+                for (let y = sY; y < eY; y++) {
+                    for (let x = sX; x < eX; x++) {
+                        let tile = level.maze[y][x];
+                        if (tile === 1) { 
+                            ctx.fillStyle = '#3e2723'; ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE); 
+                            ctx.fillStyle = '#d7ccc8'; ctx.fillRect(x * TILE_SIZE + 2, y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4); 
+                            ctx.fillStyle = '#5c4033'; ctx.fillRect(x * TILE_SIZE + TILE_SIZE/2 - 1, y * TILE_SIZE + 2, 2, TILE_SIZE - 4); 
+                            ctx.fillRect(x * TILE_SIZE + 2, y * TILE_SIZE + TILE_SIZE/2 - 1, TILE_SIZE - 4, 2); 
+                        } else if (tile === 5) { 
+                            ctx.fillStyle = '#2c1e16'; ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE); 
+                            ctx.fillStyle = '#4e342e'; ctx.fillRect(x * TILE_SIZE + 2, y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4); 
+                            ctx.fillStyle = '#111'; ctx.fillRect(x * TILE_SIZE + TILE_SIZE/2 + 3, y * TILE_SIZE + TILE_SIZE/2 - 5, 2, 10); 
+                        } else { 
+                            ctx.fillStyle = '#1e120c'; ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE); 
+                            ctx.strokeStyle = '#2d1e15'; ctx.beginPath(); 
+                            ctx.moveTo(x * TILE_SIZE, y * TILE_SIZE + TILE_SIZE/2); ctx.lineTo(x * TILE_SIZE + TILE_SIZE, y * TILE_SIZE + TILE_SIZE/2); ctx.stroke(); 
+                        }
+                    }
+                }
+
+                level.keys.forEach(k => { 
+                    ctx.save(); ctx.translate(k.x * TILE_SIZE + TILE_SIZE / 2, k.y * TILE_SIZE + TILE_SIZE / 2); ctx.rotate(Math.PI / 4);
+                    ctx.strokeStyle = '#87ceeb'; ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.arc(-4, 0, 3, 0, Math.PI * 2); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(-1, 0); ctx.lineTo(7, 0); ctx.moveTo(3, 0); ctx.lineTo(3, 3); ctx.moveTo(6, 0); ctx.lineTo(6, 3); ctx.stroke();
+                    ctx.restore();
+                });
+
+                level.mirrors.forEach(m => {
+                    ctx.save(); ctx.translate(m.x * TILE_SIZE + TILE_SIZE / 2, m.y * TILE_SIZE + TILE_SIZE / 2);
+                    ctx.fillStyle = '#8b4513'; ctx.fillRect(-2, 0, 4, 10);
+                    ctx.fillStyle = '#e0f7fa'; ctx.shadowColor = '#fff'; ctx.shadowBlur = 5;
+                    ctx.beginPath(); ctx.ellipse(0, -2, 5, 7, 0, 0, Math.PI * 2); ctx.fill();
+                    ctx.shadowBlur = 0; ctx.strokeStyle = '#cd853f'; ctx.lineWidth = 2; ctx.stroke();
+                    ctx.restore();
+                });
+
+                level.compasses.forEach(c => {
+                    ctx.save(); ctx.translate(c.x * TILE_SIZE + TILE_SIZE / 2, c.y * TILE_SIZE + TILE_SIZE / 2);
+                    ctx.shadowColor = '#000'; ctx.shadowBlur = 4;
+                    ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fillStyle = '#b8860b'; ctx.fill();
+                    ctx.strokeStyle = '#5c4033'; ctx.lineWidth = 2; ctx.stroke(); ctx.shadowBlur = 0;
+                    ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fillStyle = '#f5f5dc'; ctx.fill();
+                    ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(3, 0); ctx.lineTo(0, 6); ctx.lineTo(-3, 0); ctx.closePath();
+                    let needleGrad = ctx.createLinearGradient(0, -6, 0, 6);
+                    needleGrad.addColorStop(0, '#cc0000'); needleGrad.addColorStop(0.5, '#aa0000'); needleGrad.addColorStop(0.51, '#ffffff'); needleGrad.addColorStop(1, '#cccccc');
+                    ctx.fillStyle = needleGrad; ctx.fill();
+                    ctx.beginPath(); ctx.arc(0, 0, 2, 0, Math.PI * 2); ctx.fillStyle = '#d4af37'; ctx.fill();
+                    ctx.restore();
+                });
+
+                level.magatamas.forEach(m => { 
+                    if (m.locked) { 
+                        ctx.fillStyle = '#3e2723'; ctx.fillRect(m.x * TILE_SIZE + 4, m.y * TILE_SIZE + 4, TILE_SIZE - 8, TILE_SIZE - 8); 
+                        ctx.save(); ctx.translate(m.x * TILE_SIZE + TILE_SIZE / 2, m.y * TILE_SIZE + TILE_SIZE / 2);
+                        ctx.fillStyle = '#d4af37'; ctx.shadowColor = '#ffcf54'; ctx.shadowBlur = 5; 
+                        ctx.beginPath(); ctx.arc(0, -2, 4, Math.PI, 0); ctx.bezierCurveTo(4, 5, -1, 7, -3, 6); ctx.bezierCurveTo(-1, 4, 0, 2, -0.5, -2); ctx.fill();
+                        ctx.fillStyle = '#3e2723'; ctx.shadowBlur = 0; ctx.beginPath(); ctx.arc(0, -2, 1.5, 0, Math.PI*2); ctx.fill();
+                        ctx.restore();
+                    } 
+                });
+
+                if (goal) { 
+                    ctx.save(); ctx.translate(goal.x * TILE_SIZE + TILE_SIZE / 2, goal.y * TILE_SIZE + TILE_SIZE / 2);
+                    ctx.shadowColor = '#ff2222'; ctx.shadowBlur = 15; ctx.fillStyle = '#220000';
+                    ctx.beginPath(); ctx.arc(0, 0, TILE_SIZE / 2 - 2, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#ff5555'; ctx.lineWidth = 3; ctx.stroke();
+                    ctx.fillStyle = '#ff2222'; ctx.beginPath(); ctx.arc(0, 0, TILE_SIZE / 4, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+                }
+                
+                level.enemies.forEach(e => { 
+                    let drawX = e.x; let drawY = e.y;
+                    if (e.type === 'green' && e.state === 'alert') {
+                        drawX += (Math.random() - 0.5) * 6; drawY += (Math.random() - 0.5) * 6;
+                    }
+                    ctx.beginPath();
+                    if (e.type === 'blue') {
+                        ctx.fillStyle = (e.state === 'chase' || e.state === 'alert') ? '#44f' : '#228';
+                        ctx.arc(drawX, drawY, e.radius, 0, Math.PI * 2); ctx.fill();
+                    } else if (e.type === 'red') {
+                        ctx.fillStyle = (e.state === 'chase' || e.state === 'alert') ? '#d32f2f' : '#8b0000';
+                        ctx.arc(drawX, drawY, e.radius, 0, Math.PI * 2); ctx.fill();
+                        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); 
+                        ctx.moveTo(drawX, drawY); ctx.lineTo(drawX + Math.cos(e.facingDir) * e.radius, drawY + Math.sin(e.facingDir) * e.radius); ctx.stroke();
+                    } else if (e.type === 'green') {
+                        if (e.state === 'wander') {
+                            ctx.globalAlpha = 0.2; ctx.fillStyle = '#22ff22';
+                            ctx.arc(drawX, drawY, e.radius, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1.0;
+                        } else {
+                            ctx.fillStyle = '#22ff22'; ctx.arc(drawX, drawY, e.radius, 0, Math.PI * 2); ctx.fill();
+                            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); 
+                            ctx.moveTo(drawX, drawY); ctx.lineTo(drawX + Math.cos(e.facingDir) * e.radius, drawY + Math.sin(e.facingDir) * e.radius); ctx.stroke();
+                        }
+                    } else if (e.type === 'purple') {
+                        ctx.fillStyle = '#800080';
+                        ctx.arc(drawX, drawY, e.radius, 0, Math.PI * 2); ctx.fill();
+                        ctx.shadowColor = '#ff00ff'; ctx.shadowBlur = 10; ctx.fillStyle = '#ff00ff';
+                        ctx.beginPath(); ctx.arc(drawX + Math.cos(e.facingDir) * 4, drawY + Math.sin(e.facingDir) * 4, 3, 0, Math.PI * 2); ctx.fill();
+                        ctx.shadowBlur = 0;
+                    }
+
+                    if (e.state === 'alert' && e.type !== 'purple') { 
+                        ctx.fillStyle = '#d4af37'; ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'center'; 
+                        ctx.fillText('!', drawX, drawY - 15); 
+                    } 
+                });
+
+                ctx.globalAlpha = player.isHiding ? 0.3 : 1.0; 
+                ctx.fillStyle = '#8fbc8f'; ctx.beginPath(); ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2); ctx.fill(); 
+                ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.stroke(); 
+                ctx.globalAlpha = 1.0; 
+                
+                if (player.compassActiveUntil && Date.now() < player.compassActiveUntil) {
+                    let target = goal;
+                    if (!target) {
+                        let minDist = Infinity;
+                        level.magatamas.forEach(m => {
+                            if (m.locked) {
+                                let d = Math.hypot(m.x * TILE_SIZE + TILE_SIZE / 2 - player.x, m.y * TILE_SIZE + TILE_SIZE / 2 - player.y);
+                                if (d < minDist) { minDist = d; target = m; }
+                            }
+                        });
+                    }
+                    if (target) {
+                        let gx = target.x * TILE_SIZE + TILE_SIZE / 2; let gy = target.y * TILE_SIZE + TILE_SIZE / 2;
+                        let angle = Math.atan2(gy - player.y, gx - player.x);
+                        ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(angle);
+                        let pulse = Math.sin(Date.now() / 150) * 3; 
+                        ctx.shadowColor = '#ffcf54'; ctx.shadowBlur = 15; ctx.fillStyle = 'rgba(212, 175, 55, 1.0)';
+                        let offset = 20 + pulse; 
+                        ctx.beginPath(); ctx.moveTo(offset + 15, 0); ctx.lineTo(offset + 5, -8); ctx.lineTo(offset + 5, -3);
+                        ctx.lineTo(offset - 5, -3); ctx.lineTo(offset - 5, 3); ctx.lineTo(offset + 5, 3); ctx.lineTo(offset + 5, 8);
+                        ctx.closePath(); ctx.fill(); ctx.restore();
+                    }
+                }
+
+                ctx.restore();
+                
+                let flicker = isNearBlue ? (Math.random() - 0.5) * TILE_SIZE * 0.3 : 0;
+                let grad = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, Math.max(0, TILE_SIZE * 3 + flicker * 0.2), canvas.width / 2, canvas.height / 2, TILE_SIZE * 7 + flicker);
+                grad.addColorStop(0, 'rgba(0, 0, 0, 0)'); grad.addColorStop(1, 'rgba(10, 5, 5, 0.98)'); ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                if (isDiscovered) { 
+                    let pulse = 0.15 + Math.sin(Date.now() / 150) * 0.1; 
+                    let redGrad = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, canvas.height * 0.3, canvas.width / 2, canvas.height / 2, canvas.height * 0.7); 
+                    redGrad.addColorStop(0, 'rgba(200, 0, 0, 0)'); redGrad.addColorStop(1, `rgba(150, 0, 0, ${pulse})`); ctx.fillStyle = redGrad; ctx.fillRect(0, 0, canvas.width, canvas.height); 
+                }
+                
+                if (player.stamina < CONFIG.player.maxStamina) { 
+                    let barWidth = 200, barHeight = 12, bx = canvas.width / 2 - barWidth / 2, by = canvas.height - 50; 
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; ctx.fillRect(bx - 2, by - 2, barWidth + 4, barHeight + 4); 
+                    ctx.fillStyle = player.canDash ? '#8fbc8f' : '#d32f2f'; ctx.fillRect(bx, by, barWidth * (player.stamina / CONFIG.player.maxStamina), barHeight); 
+                }
+            }
+            requestAnimationFrame(draw);
+        }
+
+        window.addEventListener('keydown', e => { if (e.code === 'Space') keysState['space'] = true; else keysState[e.key.toLowerCase()] = true; });
+        window.addEventListener('keyup', e => { if (e.code === 'Space') keysState['space'] = false; else keysState[e.key.toLowerCase()] = false; });
+        requestAnimationFrame(draw);
+    </script>
+</body>
+</html>
